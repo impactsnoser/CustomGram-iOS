@@ -1,4 +1,4 @@
-# Сборка CustomGram .ipa на macOS (без provisioning profiles для ускорения).
+# Сборка CustomGram .ipa на macOS (Xcode managed codesigning).
 # Артефакт: unsigned IPA — для проверки сборки; установка на iPhone через Xcode + Personal Team.
 name: CustomGram Build IPA
 
@@ -75,7 +75,7 @@ jobs:
           fi
           xcodebuild -version
 
-      - name: Build release IPA (arm64, no provisioning profiles)
+      - name: Build release IPA (arm64, Xcode managed codesigning)
         run: |
           set -euo pipefail
           BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
@@ -91,7 +91,6 @@ jobs:
             build \
             --configurationPath=customgram/development-configuration.json \
             --xcodeManagedCodesigning \
-            --disableProvisioningProfiles \
             --configuration=release_arm64 \
             --buildNumber="$BUILD_NUMBER"
 
