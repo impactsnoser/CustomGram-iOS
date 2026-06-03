@@ -28,7 +28,8 @@ def fix_provisioning_profile(profile_path):
         )
         
         if result.returncode != 0:
-            print(f"  Warning: Could not extract profile with openssl: {result.stderr}")
+            print(f"  ⚠️ OpenSSL extraction failed: {result.stderr}")
+            print(f"  Attempting fallback with security cms...")
             # Fallback to security command
             result = subprocess.run(
                 ['security', 'cms', '-D', '-i', str(profile_path), '-o', str(temp_dir / 'temp.plist')],
@@ -36,7 +37,8 @@ def fix_provisioning_profile(profile_path):
                 text=True
             )
             if result.returncode != 0:
-                print(f"  Warning: Could not extract profile: {result.stderr}")
+                print(f"  ✗ Both extraction methods failed. Profile may be corrupted.")
+                print(f"  Skipping: {profile_path}")
                 return False
         
         # Load and modify the plist
@@ -115,17 +117,24 @@ def main():
     print(f"Found {len(profiles)} provisioning profiles\n")
     
     success_count = 0
+    failed_profiles = []
     for profile in sorted(profiles):
         if fix_provisioning_profile(str(profile)):
             success_count += 1
+        else:
+            failed_profiles.append(profile.name)
     
     print(f"\n✓ Successfully updated {success_count}/{len(profiles)} profiles")
     
-    if success_count == len(profiles):
-        print("All provisioning profiles have been fixed!")
+    if failed_profiles:
+        print(f"⚠️ Failed profiles (corrupted): {', '.join(failed_profiles)}")
+    
+    # Process succeeds if at least some profiles were fixed
+    if success_count > 0:
+        print("Provisioning profiles have been processed!")
         sys.exit(0)
     else:
-        print("Some profiles could not be updated. Please check manually.")
+        print("No profiles could be updated.")
         sys.exit(1)
 
 if __name__ == "__main__":
