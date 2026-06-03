@@ -20,16 +20,24 @@ def fix_provisioning_profile(profile_path):
     temp_dir.mkdir(exist_ok=True)
     
     try:
-        # Extract the provisioning profile
+        # Extract the provisioning profile using openssl (DER format)
         result = subprocess.run(
-            ['security', 'cms', '-D', '-i', str(profile_path), '-o', str(temp_dir / 'temp.plist')],
+            ['openssl', 'smime', '-inform', 'der', '-verify', '-noverify', '-in', str(profile_path), '-out', str(temp_dir / 'temp.plist')],
             capture_output=True,
             text=True
         )
         
         if result.returncode != 0:
-            print(f"  Warning: Could not extract profile: {result.stderr}")
-            return False
+            print(f"  Warning: Could not extract profile with openssl: {result.stderr}")
+            # Fallback to security command
+            result = subprocess.run(
+                ['security', 'cms', '-D', '-i', str(profile_path), '-o', str(temp_dir / 'temp.plist')],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode != 0:
+                print(f"  Warning: Could not extract profile: {result.stderr}")
+                return False
         
         # Load and modify the plist
         with open(temp_dir / 'temp.plist', 'rb') as f:
@@ -62,13 +70,24 @@ def fix_provisioning_profile(profile_path):
         with open(temp_dir / 'temp.plist', 'wb') as f:
             plistlib.dump(plist, f)
         
-        # Re-create the provisioning profile (as fake/unsigned)
-        # For fake codesigning, we can use the modified plist directly
-        # Just copy the modified one back
-        subprocess.run(
-            ['cp', str(temp_dir / 'temp.plist'), str(profile_path)],
-            check=True
+        # Re-create the provisioning profile as fake-signed PKCS#7
+        # For fake codesigning, wrap the plist in a PKCS#7 structure without real signature
+        result = subprocess.run(
+            ['openssl', 'smime', '-inform', 'PEM', '-outform', 'DER', 
+             '-sign', '-signer', '/dev/null', '-inkey', '/dev/null',
+             '-in', str(temp_dir / 'temp.plist'), '-out', str(profile_path)],
+            capture_output=True,
+            text=True
         )
+        
+        if result.returncode != 0:
+            # Fallback: use security command to create a fake provisioning profile
+            print(f"  Note: OpenSSL PKCS#7 wrapping not available, using alternative method")
+            # For now, just copy the plist back (will be treated as fake-signed)
+            subprocess.run(
+                ['cp', str(temp_dir / 'temp.plist'), str(profile_path)],
+                check=True
+            )
         
         print(f"  ✓ Updated successfully")
         return True
