@@ -1,5 +1,5 @@
-# Сборка CustomGram .ipa на macOS (fake codesigning, как в официальном CI Telegram-iOS).
-# Артефакт: unsigned/fake-signed IPA — для проверки сборки; установка на iPhone через Xcode + Personal Team.
+# Сборка CustomGram .ipa на macOS (без provisioning profiles для ускорения).
+# Артефакт: unsigned IPA — для проверки сборки; установка на iPhone через Xcode + Personal Team.
 name: CustomGram Build IPA
 
 on:
@@ -75,17 +75,7 @@ jobs:
           fi
           xcodebuild -version
 
-      - name: Fix provisioning profiles (inject aps-environment entitlement)
-        run: |
-          set -euo pipefail
-          python3 build-system/fake-codesigning/fix-entitlements.py
-
-      - name: Import fake codesigning certificates
-        run: |
-          set -euo pipefail
-          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
-
-      - name: Build release IPA (arm64)
+      - name: Build release IPA (arm64, no provisioning profiles)
         run: |
           set -euo pipefail
           BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
@@ -100,7 +90,8 @@ jobs:
             --overrideXcodeVersion \
             build \
             --configurationPath=customgram/development-configuration.json \
-            --codesigningInformationPath=build-system/fake-codesigning \
+            --xcodeManagedCodesigning \
+            --disableProvisioningProfiles \
             --configuration=release_arm64 \
             --buildNumber="$BUILD_NUMBER"
 
