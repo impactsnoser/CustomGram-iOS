@@ -62,6 +62,19 @@ jobs:
       - name: Show toolchain versions
         run: cat versions.json
 
+      - name: Select Xcode (use runner default if pinned version missing)
+        run: |
+          set -euo pipefail
+          XCODE_VERSION="$(python3 -c 'import json; print(json.load(open("versions.json"))["xcode"])')"
+          if [ -d "/Applications/Xcode_${XCODE_VERSION}.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+            echo "Using Xcode ${XCODE_VERSION}"
+          else
+            echo "Xcode_${XCODE_VERSION} not found; using default:"
+            xcode-select -p
+          fi
+          xcodebuild -version
+
       - name: Import fake codesigning certificates
         run: |
           set -euo pipefail
@@ -79,12 +92,12 @@ jobs:
 
           python3 -u build-system/Make/Make.py \
             --cacheDir="$HOME/telegram-bazel-cache" \
+            --overrideXcodeVersion \
             build \
             --configurationPath=customgram/development-configuration.json \
             --codesigningInformationPath=build-system/fake-codesigning \
             --configuration=release_arm64 \
-            --buildNumber="$BUILD_NUMBER" \
-            --overrideXcodeVersion
+            --buildNumber="$BUILD_NUMBER"
 
       - name: Collect IPA artifact
         run: |

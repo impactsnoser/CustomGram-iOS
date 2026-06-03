@@ -27,26 +27,39 @@ jobs:
       - name: Show required versions
         run: cat versions.json
 
+      - name: Select Xcode (use runner default if pinned version missing)
+        run: |
+          set -euo pipefail
+          XCODE_VERSION="$(python3 -c 'import json; print(json.load(open("versions.json"))["xcode"])')"
+          if [ -d "/Applications/Xcode_${XCODE_VERSION}.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+            echo "Using Xcode ${XCODE_VERSION}"
+          else
+            echo "Xcode_${XCODE_VERSION} not found; using default:"
+            xcode-select -p
+          fi
+          xcodebuild -version
+
       - name: Generate Xcode project without paid signing
         run: |
           set -euo pipefail
           python3 build-system/Make/Make.py \
             --cacheDir="$HOME/telegram-bazel-cache" \
+            --overrideXcodeVersion \
             generateProject \
             --configurationPath=customgram/development-configuration.json \
-            --disableProvisioningProfiles \
-            --overrideXcodeVersion
+            --disableProvisioningProfiles
 
       - name: Build simulator app without provisioning profiles
         run: |
           set -euo pipefail
           python3 build-system/Make/Make.py \
             --cacheDir="$HOME/telegram-bazel-cache" \
+            --overrideXcodeVersion \
             build \
             --configurationPath=customgram/development-configuration.json \
             --configuration=debug_sim_arm64 \
-            --disableProvisioningProfiles \
-            --overrideXcodeVersion
+            --disableProvisioningProfiles
 
       - name: Upload generated project artifacts
         uses: actions/upload-artifact@v4
