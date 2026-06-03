@@ -1,0 +1,116 @@
+# Сборка CustomGram .ipa на macOS (fake codesigning, как в официальном CI Telegram-iOS).
+# Артефакт: unsigned/fake-signed IPA — для проверки сборки; установка на iPhone через Xcode + Personal Team.
+name: CustomGram Build IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: customgram-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ipa:
+    runs-on: macos-15
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Validate Telegram API secrets
+        env:
+          CUSTOMGRAM_API_ID: ${{ secrets.CUSTOMGRAM_API_ID }}
+          CUSTOMGRAM_API_HASH: ${{ secrets.CUSTOMGRAM_API_HASH }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CUSTOMGRAM_API_ID:-}" ] || [ -z "${CUSTOMGRAM_API_HASH:-}" ]; then
+            echo "::error::Добавьте secrets CUSTOMGRAM_API_ID и CUSTOMGRAM_API_HASH в Settings → Secrets and variables → Actions"
+            echo "Получить: https://my.telegram.org/apps"
+            exit 1
+          fi
+          if [ "$CUSTOMGRAM_API_ID" = "PUT_YOUR_API_ID_FROM_MY_TELEGRAM_ORG" ]; then
+            echo "::error::CUSTOMGRAM_API_ID не задан (остался placeholder)"
+            exit 1
+          fi
+
+      - name: Inject API credentials into build configuration
+        env:
+          CUSTOMGRAM_API_ID: ${{ secrets.CUSTOMGRAM_API_ID }}
+          CUSTOMGRAM_API_HASH: ${{ secrets.CUSTOMGRAM_API_HASH }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json
+          import os
+          path = "customgram/development-configuration.json"
+          with open(path, "r", encoding="utf-8") as f:
+              cfg = json.load(f)
+          cfg["api_id"] = os.environ["CUSTOMGRAM_API_ID"]
+          cfg["api_hash"] = os.environ["CUSTOMGRAM_API_HASH"]
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(cfg, f, indent=2)
+              f.write("\n")
+          print("Updated", path, "bundle_id=", cfg.get("bundle_id"))
+          PY
+
+      - name: Show toolchain versions
+        run: cat versions.json
+
+      - name: Import fake codesigning certificates
+        run: |
+          set -euo pipefail
+          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+
+      - name: Build release IPA (arm64)
+        run: |
+          set -euo pipefail
+          BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
+          export APP_VERSION="$(python3 -c 'import json; print(json.load(open("versions.json"))["app"])')"
+          export COMMIT_COUNT="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+          export COMMIT_COUNT="$((COMMIT_COUNT + BUILD_NUMBER_OFFSET))"
+          export BUILD_NUMBER="$COMMIT_COUNT"
+          echo "APP_VERSION=$APP_VERSION BUILD_NUMBER=$BUILD_NUMBER"
+
+          python3 -u build-system/Make/Make.py \
+            --cacheDir="$HOME/telegram-bazel-cache" \
+            build \
+            --configurationPath=customgram/development-configuration.json \
+            --codesigningInformationPath=build-system/fake-codesigning \
+            --configuration=release_arm64 \
+            --buildNumber="$BUILD_NUMBER" \
+            --overrideXcodeVersion
+
+      - name: Collect IPA artifact
+        run: |
+          set -euo pipefail
+          OUTPUT_PATH="build/artifacts"
+          rm -rf "$OUTPUT_PATH"
+          mkdir -p "$OUTPUT_PATH"
+          shopt -s nullglob
+          found=0
+          for f in bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/*.ipa; do
+            echo "Found: $f"
+            cp "$f" "$OUTPUT_PATH/CustomGram.ipa"
+            found=1
+            break
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "::error::IPA не найден в bazel-out. Проверьте лог сборки."
+            find bazel-out -name '*.ipa' 2>/dev/null | head -20 || true
+            exit 1
+          fi
+          ls -la "$OUTPUT_PATH"
+
+      - name: Upload CustomGram.ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: CustomGram-ipa-${{ github.run_number }}
+          path: build/artifacts/CustomGram.ipa
+          retention-days: 14
+          if-no-files-found: error

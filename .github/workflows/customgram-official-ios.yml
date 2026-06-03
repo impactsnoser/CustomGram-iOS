@@ -1,0 +1,59 @@
+# Быстрая проверка компиляции (симулятор, без IPA).
+name: CustomGram Free Simulator Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - 'submodules/CustomGramCore/**'
+      - 'submodules/CustomGramUI/**'
+      - 'submodules/TelegramCore/**'
+      - 'submodules/TelegramUI/**'
+      - 'submodules/AccountUtils/**'
+      - 'customgram/**'
+      - '.github/workflows/**'
+
+jobs:
+  free-simulator:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Show required versions
+        run: cat versions.json
+
+      - name: Generate Xcode project without paid signing
+        run: |
+          set -euo pipefail
+          python3 build-system/Make/Make.py \
+            --cacheDir="$HOME/telegram-bazel-cache" \
+            generateProject \
+            --configurationPath=customgram/development-configuration.json \
+            --disableProvisioningProfiles \
+            --overrideXcodeVersion
+
+      - name: Build simulator app without provisioning profiles
+        run: |
+          set -euo pipefail
+          python3 build-system/Make/Make.py \
+            --cacheDir="$HOME/telegram-bazel-cache" \
+            build \
+            --configurationPath=customgram/development-configuration.json \
+            --configuration=debug_sim_arm64 \
+            --disableProvisioningProfiles \
+            --overrideXcodeVersion
+
+      - name: Upload generated project artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: customgram-free-simulator-build
+          path: |
+            build-input
+            bazel-bin
+            *.xcodeproj
+          if-no-files-found: warn

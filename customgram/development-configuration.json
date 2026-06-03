@@ -1,0 +1,14 @@
+{
+  "bundle_id": "app.customgram.client",
+  "api_id": "PUT_YOUR_API_ID_FROM_MY_TELEGRAM_ORG",
+  "api_hash": "PUT_YOUR_API_HASH_FROM_MY_TELEGRAM_ORG",
+  "team_id": "",
+  "app_center_id": "0",
+  "is_internal_build": "true",
+  "is_appstore_build": "false",
+  "appstore_id": "0",
+  "app_specific_url_scheme": "customgram",
+  "premium_iap_product_id": "",
+  "enable_siri": false,
+  "enable_icloud": false
+}
